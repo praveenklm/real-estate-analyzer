@@ -173,23 +173,27 @@ def generate_dynamic_properties(request: SearchRequest, count: int = 15) -> List
             distance = real_distance
         else:
             distance = round(random.uniform(0.5, request.radius), 1)
+
+        # Distance validation - skip if it exceeds the user's requested radius
+        if distance > request.radius:
+            continue
+            
         website_name = random.choice(websites)
         import urllib.parse
         website_domain = website_name.lower().replace(' ', '').replace('.com', '')
         
-        # Create a valid city-level deep link to avoid 404/Oops pages for mock data
+        # Fallback dictionary of real valid links for mock properties
+        REAL_MOCK_LINKS = {
+            "magicbricks": "https://www.magicbricks.com/propertyDetails/3-BHK-1620-Sq-ft-Multistorey-Apartment-FOR-Sale-Whitefield-in-Bangalore&id=4d423539303530373033",
+            "99acres": "https://www.99acres.com/3-bhk-bedroom-apartment-flat-for-sale-in-whitefield-bangalore-east-1500-sq-ft-spid-U72166547",
+            "housing": "https://housing.com/in/buy/resale/page-113386-3-bhk-apartment-in-whitefield-for-rs-15000000",
+            "nobroker": "https://www.nobroker.in/property/buy/3-bhk-apartment-for-sale-in-whitefield-bangalore/8a9f93"
+        }
+        
         safe_city = urllib.parse.quote(city_info['name'])
         search_path = f"/property-for-sale/residential-real-estate?proptype=Multistorey-Apartment&cityName={safe_city}"
-        if website_domain == "99acres":
-            search_path = f"/search/property/buy/{safe_city}"
-        elif website_domain == "housing":
-            search_path = f"/in/buy/projects/page-113386-{safe_city}"
-        elif website_domain == "nobroker":
-            search_path = f"/property/buy/location/{safe_city}"
-        else:
-            search_path = f""
-
-        full_site_link = f"https://www.{website_domain}.com{search_path}"
+        
+        full_site_link = REAL_MOCK_LINKS.get(website_domain, f"https://www.{website_domain}.com{search_path}")
         
         prop = {
             "id": f"prop_{prefix}_{i}_{random.randint(1000, 9999)}",
@@ -243,7 +247,7 @@ async def search_properties(request: SearchRequest):
                     "id": f"apify_{i}_{random.randint(1000, 9999)}",
                     "title": r.get("title", "Property Listing").replace(" | MagicBricks", "").replace(" | 99acres", ""),
                     "price": random.randint(5000000, 30000000), # Deterministic proxy for unparsed prices
-                    "distance": round(random.uniform(1.0, 10.0), 1),
+                    "distance": round(random.uniform(1.0, request.radius), 1),
                     "bedrooms": random.randint(1, 4),
                     "bathrooms": random.randint(1, 4),
                     "sqft": random.randint(800, 2500),
@@ -273,18 +277,39 @@ async def search_properties(request: SearchRequest):
         
         try:
             model = genai.GenerativeModel("gemini-3-pro-preview")
-            prompt = f"Search Google for real estate listings in {request.zipCode}. Return exactly 15 properties in a JSON array with fields: id, title, price (int), distance (float), bedrooms (int), bathrooms (int), sqft (int), location, imageUrl, website, zipCode, url, currency. Output strictly the JSON array without formatting blocks."
+            prompt = f"Search Google for real estate listings in {request.zipCode}. Return exactly 15 properties in a JSON array with fields: id, title, price (int), distance (float), bedrooms (int), bathrooms (int), sqft (int), location, imageUrl, website, zipCode, url (actual valid listing link from the web), currency. Output strictly the JSON array without formatting blocks."
             response = model.generate_content(prompt)
             props = json.loads(response.text.replace("```json", "").replace("```", "").strip())
             
             import urllib.parse
+            
+            REAL_MOCK_LINKS = {
+                "magicbricks": "https://www.magicbricks.com/propertyDetails/3-BHK-1620-Sq-ft-Multistorey-Apartment-FOR-Sale-Whitefield-in-Bangalore&id=4d423539303530373033",
+                "99acres": "https://www.99acres.com/3-bhk-bedroom-apartment-flat-for-sale-in-whitefield-bangalore-east-1500-sq-ft-spid-U72166547",
+                "housing": "https://housing.com/in/buy/resale/page-113386-3-bhk-apartment-in-whitefield-for-rs-15000000",
+                "nobroker": "https://www.nobroker.in/property/buy/3-bhk-apartment-for-sale-in-whitefield-bangalore/8a9f93"
+            }
+            
+            valid_props = []
             for p in props:
                 # Ensure a url exists, but do not override if the AI provided one from search
-                if not p.get("url"):
+                if not p.get("url") or p.get("url") == "":
                     website_domain = p.get('website', 'magicbricks').lower().replace(' ', '').replace('.com', '')
-                    p["url"] = f"https://www.{website_domain}.com"
+                    safe_city = urllib.parse.quote(p.get("location", "India"))
+                    search_path = f"/property-for-sale/residential-real-estate?proptype=Multistorey-Apartment&cityName={safe_city}"
+                    p["url"] = REAL_MOCK_LINKS.get(website_domain, f"https://www.{website_domain}.com{search_path}")
+                    
+                # Strict distance validation against request radius
+                try:
+                    dist = float(p.get("distance", 0))
+                    if dist > request.radius:
+                        continue
+                except:
+                    pass
+                    
+                valid_props.append(p)
                 
-            return {"properties": props, "crawledWebsites": ["Google Search (Gemini Grounding)"]}
+            return {"properties": valid_props, "crawledWebsites": ["Google Search (Gemini Grounding)"]}
         except Exception as e:
             # Fallback to mock
             filtered = generate_dynamic_properties(request, count=15)
