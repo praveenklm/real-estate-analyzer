@@ -177,16 +177,17 @@ def generate_dynamic_properties(request: SearchRequest, count: int = 15) -> List
         import urllib.parse
         website_domain = website_name.lower().replace(' ', '').replace('.com', '')
         
-        # Create a full search-style deep link depending on the site
-        search_path = f"/property-for-sale/residential-real-estate?Locality={urllib.parse.quote(locality)}"
+        # Create a valid city-level deep link to avoid 404/Oops pages for mock data
+        safe_city = urllib.parse.quote(city_info['name'])
+        search_path = f"/property-for-sale/residential-real-estate?proptype=Multistorey-Apartment&cityName={safe_city}"
         if website_domain == "99acres":
-            search_path = f"/search/property/buy/{urllib.parse.quote(locality)}"
+            search_path = f"/search/property/buy/{safe_city}"
         elif website_domain == "housing":
-            search_path = f"/in/buy/searches/{urllib.parse.quote(locality)}"
+            search_path = f"/in/buy/projects/page-113386-{safe_city}"
         elif website_domain == "nobroker":
-            search_path = f"/property/buy/location/{urllib.parse.quote(locality)}"
+            search_path = f"/property/buy/location/{safe_city}"
         else:
-            search_path = f"/search?q={urllib.parse.quote(locality)}+{bedrooms}BHK"
+            search_path = f""
 
         full_site_link = f"https://www.{website_domain}.com{search_path}"
         
@@ -278,20 +279,10 @@ async def search_properties(request: SearchRequest):
             
             import urllib.parse
             for p in props:
-                website_domain = p.get('website', '').lower().replace(' ', '').replace('.com', '')
-                locality = p.get('location', '')
-                
-                search_path = f"/property-for-sale/residential-real-estate?Locality={urllib.parse.quote(locality)}"
-                if "99acres" in website_domain:
-                    search_path = f"/search/property/buy/{urllib.parse.quote(locality)}"
-                elif "housing" in website_domain:
-                    search_path = f"/in/buy/searches/{urllib.parse.quote(locality)}"
-                elif "nobroker" in website_domain:
-                    search_path = f"/property/buy/location/{urllib.parse.quote(locality)}"
-                else:
-                    search_path = f"/search?q={urllib.parse.quote(locality)}"
-
-                p["url"] = f"https://www.{website_domain or 'magicbricks'}.com{search_path}"
+                # Ensure a url exists, but do not override if the AI provided one from search
+                if not p.get("url"):
+                    website_domain = p.get('website', 'magicbricks').lower().replace(' ', '').replace('.com', '')
+                    p["url"] = f"https://www.{website_domain}.com"
                 
             return {"properties": props, "crawledWebsites": ["Google Search (Gemini Grounding)"]}
         except Exception as e:
