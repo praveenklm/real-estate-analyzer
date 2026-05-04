@@ -1,0 +1,27 @@
+steps:
+  # Build Backend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/ide-flow/real-estate-repo/backend:${BUILD_ID}', '-t', 'us-central1-docker.pkg.dev/ide-flow/real-estate-repo/backend:latest', './backend']
+
+  # Build Frontend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/ide-flow/real-estate-repo/frontend:${BUILD_ID}', '-t', 'us-central1-docker.pkg.dev/ide-flow/real-estate-repo/frontend:latest', './frontend']
+
+  # Push Backend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/ide-flow/real-estate-repo/backend', '--all-tags']
+
+  # Push Frontend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/ide-flow/real-estate-repo/frontend', '--all-tags']
+
+  # Update ADC Template Component Parameters
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        python3 update_adc_images.py ${BUILD_ID}
+
+options:
+  logging: CLOUD_LOGGING_ONLY

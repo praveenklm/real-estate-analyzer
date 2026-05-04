@@ -1,0 +1,17 @@
+steps:
+  # Deploy Infra via Application Design Center
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'design-center'
+      - 'spaces'
+      - 'applications'
+      - 'deploy'
+      - 'real-estate-agent-re2024'
+      - '--space=default-space'
+      - '--project=ide-flow'
+      - '--location=us-central1'
+      - '--replace'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
